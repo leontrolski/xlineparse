@@ -1,6 +1,0 @@
-from typing import Any
-
-
-class Parser:
-    def __init__(self, schema_json_str: str) -> None: ...
-    def parse_line(self, line: str) -> tuple[Any, ...]: ...
