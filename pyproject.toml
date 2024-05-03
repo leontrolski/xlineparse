@@ -1,0 +1,57 @@
+[project]
+name = "xlineparse"
+version = "0.0.27"
+description = "difftastic Python wrapper"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+keywords = ["diff"]
+authors = [{ name = "Oliver Russell", email = "ojhrussell@gmail.com" }]
+maintainers = [{ name = "Oliver Russell", email = "ojhrussell@gmail.com" }]
+classifiers = ["Programming Language :: Python"]
+
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "maturin==1.4.0",
+    "pytest==7.*",
+    "mypy==1.6.*",
+    "pip==24.0",
+]
+test = [
+    "pytest==7.*",
+]
+
+[project.urls]
+homepage = "https://github.com/leontrolski/xlineparse"
+documentation = "https://github.com/leontrolski/xlineparse"
+repository = "https://github.com/leontrolski/xlineparse.git"
+
+[tool.mypy]
+# Strict mode; enables the following flags:
+warn_unused_configs = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+no_implicit_reexport = true
+strict_equality = true
+no_implicit_optional = true
+
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+python-source = "python"
+strip = true
+
+[project.scripts]
+xlineparse = "xlineparse.cli:main"
