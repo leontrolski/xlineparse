@@ -21,22 +21,22 @@ AsdLine = tuple[
         xlp.DatetimeField(format="%Y-%m-%d %H:%M:%S", time_zone="Europe/London"),
     ],
 ]
-file_1_schema = xlp.Schema(
+file_1_schema = xlp.Schema.from_type(
     delimiter="|",
     quote=None,
     trailing_delimiter=False,
-    lines=AsdLine,
+    t=AsdLine,
 )
 
 QweLine = tuple[
     Literal["qwe"],
     int,
 ]
-file_2_schema = xlp.Schema(
+file_2_schema = xlp.Schema.from_type(
     delimiter="|",
     quote=None,
     trailing_delimiter=False,
-    lines=AsdLine | QweLine,
+    t=AsdLine | QweLine,
 )
 
 
