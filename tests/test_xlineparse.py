@@ -38,6 +38,12 @@ file_2_schema = xlp.Schema.from_type(
     trailing_delimiter=False,
     t=AsdLine | QweLine,
 )
+file_3_schema = xlp.Schema.from_type(
+    delimiter="|",
+    quote=None,
+    trailing_delimiter=True,
+    t=QweLine,
+)
 
 
 def test_parse_line_1() -> None:
@@ -58,6 +64,12 @@ def test_parse_line_1() -> None:
 
 def test_parse_line_2() -> None:
     assert file_2_schema.parse_line("qwe|1") == (
+        "qwe",
+        1,
+    )
+
+def test_parse_line_3() -> None:
+    assert file_3_schema.parse_line("qwe|1|") == (
         "qwe",
         1,
     )

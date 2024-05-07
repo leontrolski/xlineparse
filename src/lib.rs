@@ -19,6 +19,8 @@ use chrono_tz::Tz;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
+// For now, we serialize schemas as JSON, maybe in the future we can use:
+// https://crates.io/crates/pythonize
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "kind")]
 enum Field {
@@ -144,7 +146,17 @@ impl Parser {
         }
         let delimiter = self.schema.delimiter.chars().next().unwrap();
 
-        let mut parts = line.trim_end_matches('\n').split(delimiter);
+        let mut line_stripped = line.trim_end_matches('\n');
+        if self.schema.trailing_delimiter {
+            if !line_stripped.ends_with(delimiter) {
+                return Err(PyValueError::new_err(
+                    "Line doesn't have trailing delimiter",
+                ));
+            }
+            line_stripped = line.trim_end_matches(delimiter);
+        }
+
+        let mut parts = line_stripped.split(delimiter);
         let or_first = parts.next();
         if or_first.is_none() {
             return Err(PyValueError::new_err("Split line has length < 1"));
@@ -271,10 +283,7 @@ fn part_to_py<'a>(_py: Python<'a>, schema_field: &Field, part: &str) -> PyResult
                     );
                     match dt {
                         LocalResult::Single(dt) => Ok(dt.into_py(_py)),
-                        _ => Err(PyValueError::new_err(format!(
-                            "Invalid datetime: {}",
-                            part
-                        ))),
+                        _ => Err(PyValueError::new_err(format!("Invalid datetime: {}", part))),
                     }
                 },
             )
