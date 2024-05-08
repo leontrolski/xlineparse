@@ -213,6 +213,9 @@ def convert_line_type(t: type) -> Line:
     return Line(name=name, fields=[field_type_to_field(t) for t in fields])
 
 
+class LineParseError(ValueError): ...
+
+
 @dataclass
 class Schema:
     delimiter: str
@@ -255,7 +258,10 @@ class Schema:
         )
 
     def parse_line(self, line: str) -> tuple[Any, ...]:
-        parsed = self._parser.parse_line(line)  # type: ignore
+        try:
+            parsed = self._parser.parse_line(line)  # type: ignore
+        except ValueError as e:
+            raise LineParseError(f"Failed to parse line: {line}") from e
         if self._enum_conversions:
             first, *_ = parsed
             enum_conversion: dict[int, StrEnumField] = self._enum_conversions[first]
