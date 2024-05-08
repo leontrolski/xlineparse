@@ -1,4 +1,5 @@
 from __future__ import annotations
+from collections import defaultdict
 
 from . import xlineparse as _xlineparse  # type: ignore
 
@@ -24,6 +25,24 @@ class StrField:
             min_length=self.min_length,
             max_length=self.max_length,
             invalid_characters=self.invalid_characters,
+        )
+
+
+@dataclass(frozen=True, kw_only=True)
+class StrEnumField:
+    required: bool = True
+    cls: type[enum.Enum]
+
+    def as_dict(self) -> dict[str, Any]:
+        values = {field.value for field in self.cls}
+        if not all(isinstance(v, str) for v in values):
+            raise NotImplementedError(
+                f"Can't convert {self.cls} as all the values are not strings"
+            )
+        return dict(
+            kind="STR_ENUM",
+            required=self.required,
+            values=sorted(values),
         )
 
 
@@ -132,6 +151,7 @@ class TimeField:
 
 Field = (
     StrField
+    | StrEnumField
     | IntField
     | FloatField
     | DecimalField
@@ -162,8 +182,8 @@ def field_type_to_field(t: type) -> Field:
         field = FloatField()
     elif t is decimal.Decimal and field is None:
         field = DecimalField()
-    elif issubclass(t, enum.Enum):
-        raise NotImplementedError
+    elif issubclass(t, enum.Enum) and field is None:
+        field = StrEnumField(cls=t)
 
     if field is None:
         raise RuntimeError(f"Type {t} needs Annotated[x, XField(...)]")
@@ -198,9 +218,10 @@ class Schema:
     delimiter: str
     quote: str | None
     trailing_delimiter: bool
-    lines: list[Line]  # some day, we can use TypeForm here...
+    lines: list[Line]
 
     def __post_init__(self) -> None:
+        # Add a ._parser
         jsonable = dict(
             delimiter=self.delimiter,
             quote=self.quote,
@@ -208,13 +229,19 @@ class Schema:
             lines=[line.as_dict() for line in self.lines],
         )
         self._parser = _xlineparse.Parser(json.dumps(jsonable))
+        # Set up enum conversion map, maybe there's a more efficient way of doing this..
+        self._enum_conversions: dict[str, dict[int, StrEnumField]] = defaultdict(dict)
+        for line in self.lines:
+            for i, field in enumerate(line.fields, start=1):
+                if isinstance(field, StrEnumField):
+                    self._enum_conversions[line.name][i] = field
 
     @staticmethod
     def from_type(
         delimiter: str,
         quote: str | None,
         trailing_delimiter: bool,
-        t: Any,
+        t: Any,  # some day, we can use TypeForm here...
     ) -> Schema:
         if get_origin(t) is Union or get_origin(t) is UnionType:
             lines = [convert_line_type(arg) for arg in get_args(t)]
@@ -228,4 +255,12 @@ class Schema:
         )
 
     def parse_line(self, line: str) -> tuple[Any, ...]:
-        return self._parser.parse_line(line)  # type: ignore
+        parsed = self._parser.parse_line(line)  # type: ignore
+        if self._enum_conversions:
+            first, *_ = parsed
+            enum_conversion: dict[int, StrEnumField] = self._enum_conversions[first]
+            parsed = tuple(
+                enum_conversion[i].cls(v) if i in enum_conversion else v
+                for i, v in enumerate(parsed)
+            )
+        return parsed

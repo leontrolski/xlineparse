@@ -25,7 +25,9 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "kind")]
 enum Field {
     #[serde(rename = "STR")]
-    String(StrField),
+    Str(StrField),
+    #[serde(rename = "STR_ENUM")]
+    StrEnum(StrEnumField),
     #[serde(rename = "INT")]
     Int(IntField),
     #[serde(rename = "FLOAT")]
@@ -50,6 +52,12 @@ struct StrField {
     min_length: Option<i32>,
     max_length: Option<i32>,
     invalid_characters: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct StrEnumField {
+    required: bool,
+    values: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -179,7 +187,7 @@ impl Parser {
         let schema_line = or_schema_line.unwrap();
         if schema_line.fields.len() != rest.len() {
             return Err(PyValueError::new_err(format!(
-                "Mismatched line length, schema length: {}, actual length: {} + 1",
+                "Mismatched line length, schema length: {}, actual length: (header=1) + {}",
                 schema_line.fields.len(),
                 rest.len()
             )));
@@ -202,7 +210,10 @@ fn part_to_py<'a>(_py: Python<'a>, schema_field: &Field, part: &str) -> PyResult
     match (part, schema_field) {
         (
             "",
-            Field::String(StrField {
+            Field::Str(StrField {
+                required: false, ..
+            })
+            | Field::StrEnum(StrEnumField {
                 required: false, ..
             })
             | Field::Int(IntField {
@@ -230,7 +241,14 @@ fn part_to_py<'a>(_py: Python<'a>, schema_field: &Field, part: &str) -> PyResult
                 required: false, ..
             }),
         ) => Ok(none.into_py(_py)),
-        (_, Field::String(_)) => Ok(String::from(part).into_py(_py)),
+        (_, Field::Str(_)) => Ok(String::from(part).into_py(_py)),
+        (_, Field::StrEnum(StrEnumField { values, .. })) => {
+            if values.contains(&String::from(part)) {
+                Ok(String::from(part).into_py(_py))
+            } else {
+                err
+            }
+        }
         (_, Field::Int(_)) => part
             .parse::<i64>()
             .map_or_else(|_| err, |i| Ok(i.into_py(_py))),
@@ -256,7 +274,6 @@ fn part_to_py<'a>(_py: Python<'a>, schema_field: &Field, part: &str) -> PyResult
                 err
             }
         }
-        // TODO: Enum
         (
             _,
             Field::Datetime(DatetimeField {

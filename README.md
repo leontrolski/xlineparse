@@ -29,7 +29,7 @@ QweLine = tuple[
     int,
 ]
 
-schema = xlp.Schema(
+schema = xlp.Schema.from_type(
     delimiter="|",
     quote=None,
     trailing_delimiter=False,
@@ -53,7 +53,8 @@ schema.parse_line("asd|1|3.14||Y|2012-01-02|123200")
 
 # TODO:
 
-- Implement Enum.
+- `IntEnum`
+- Can we make enums quicker?
 - Implement constraints:
     - StrField.min_length
     - StrField.max_length

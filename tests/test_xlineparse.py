@@ -1,5 +1,6 @@
 import datetime as dt
 from decimal import Decimal
+import enum
 from typing import Annotated, Literal
 import zoneinfo
 
@@ -46,6 +47,19 @@ file_3_schema = xlp.Schema.from_type(
 )
 
 
+class FooEnum(enum.Enum):
+    A = "A"
+    B = "B"
+
+
+file_4_schema = xlp.Schema.from_type(
+    delimiter="|",
+    quote=None,
+    trailing_delimiter=False,
+    t=tuple[Literal["foo"], FooEnum, FooEnum],
+)
+
+
 def test_parse_line_1() -> None:
     assert file_1_schema.parse_line(
         "asd|1|3.14||Y|2012-01-02|123200|2014-07-28 12:00:09|2014-07-28 12:00:09"
@@ -68,8 +82,17 @@ def test_parse_line_2() -> None:
         1,
     )
 
+
 def test_parse_line_3() -> None:
     assert file_3_schema.parse_line("qwe|1|") == (
         "qwe",
         1,
+    )
+
+
+def test_parse_line_4() -> None:
+    assert file_4_schema.parse_line("foo|A|B") == (
+        "foo",
+        FooEnum.A,
+        FooEnum.B,
     )
