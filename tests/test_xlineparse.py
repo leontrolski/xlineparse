@@ -267,4 +267,28 @@ def test_errors() -> None:
             quote_str=None,
             trailing_delimiter=False,
             t=tuple[Literal["a"], int],
-        ).parse_line("a|1|2")  # too many parts
+        ).parse_line(
+            "a|1|2"
+        )  # too many parts
+
+
+def test_low_level_usage() -> None:
+    schema = xlp.Schema(
+        delimiter="|",
+        quote_str=None,
+        trailing_delimiter=False,
+        lines=[
+            xlp.Line(
+                name="a",
+                fields=[
+                    xlp.DecimalField(
+                        required=True,
+                        max_decimal_places=None,
+                        min_value=Decimal("2.0"),
+                        max_value=None,
+                    )
+                ],
+            )
+        ],
+    )
+    assert schema.parse_line("a|2.0") == ("a", Decimal("2.0"))
