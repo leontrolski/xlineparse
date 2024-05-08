@@ -57,7 +57,7 @@ file_4_schema = xlp.Schema.from_type(
     delimiter="|",
     quote_str=None,
     trailing_delimiter=False,
-    t=tuple[Literal["foo"], FooEnum, FooEnum],
+    t=tuple[Literal["foo"], FooEnum, FooEnum | None],
 )
 ZxcLine = tuple[
     Literal["zxc"],
@@ -107,6 +107,11 @@ def test_parse_line_4() -> None:
         "foo",
         FooEnum.A,
         FooEnum.B,
+    )
+    assert file_4_schema.parse_line("foo|A|") == (
+        "foo",
+        FooEnum.A,
+        None,
     )
 
 

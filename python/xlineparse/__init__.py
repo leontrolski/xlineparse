@@ -266,7 +266,11 @@ class Schema:
             first, *_ = parsed
             enum_conversion: dict[int, StrEnumField] = self._enum_conversions[first]
             parsed = tuple(
-                enum_conversion[i].cls(v) if i in enum_conversion else v
+                (
+                    enum_conversion[i].cls(v)
+                    if (v is not None and i in enum_conversion)
+                    else v
+                )
                 for i, v in enumerate(parsed)
             )
         return parsed  # type: ignore
