@@ -53,17 +53,6 @@ schema.parse_line("asd|1|3.14||Y|2012-01-02|123200")
 
 # TODO:
 
-- Implement constraints:
-    - StrField.min_length
-    - StrField.max_length
-    - StrField.invalid_characters
-    - IntField.min_value: int | None = None
-    - IntField.max_value: int | None = None
-    - FloatField.min_value: float | None = None
-    - FloatField.max_value: float | None = None
-    - DecimalField.max_decimal_places: int | None = None
-    - DecimalField.min_value: decimal.Decimal | None = None
-    - DecimalField.max_value: decimal.Decimal | None = None
 - Refactor some of the `is_none()`s with a bit o' ChatGPT.
 - Allow delimiters to be escaped.
 - Test errors.

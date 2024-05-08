@@ -1,9 +1,10 @@
 import datetime as dt
 from decimal import Decimal
 import enum
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 import zoneinfo
 
+import pytest
 import xlineparse as xlp
 
 AsdLine = tuple[
@@ -115,3 +116,114 @@ def test_parse_line_5() -> None:
         "oi oi",
         4,
     )
+
+
+def test_emptyness() -> None:
+    assert xlp.Schema.from_type(
+        delimiter="|",
+        quote_str=None,
+        trailing_delimiter=False,
+        t=tuple[Literal["a"], str],
+    ).parse_line("a|") == ("a", "")
+    assert xlp.Schema.from_type(
+        delimiter="|",
+        quote_str=None,
+        trailing_delimiter=False,
+        t=tuple[Literal["a"], str | None],
+    ).parse_line("a|") == ("a", None)
+    assert xlp.Schema.from_type(
+        delimiter=",",
+        quote_str='"',
+        trailing_delimiter=False,
+        t=tuple[Literal["a"], str | None],
+    ).parse_line('"a",') == ("a", None)
+    assert xlp.Schema.from_type(
+        delimiter=",",
+        quote_str='"',
+        trailing_delimiter=False,
+        t=tuple[Literal["a"], str],
+    ).parse_line('"a",""') == ("a", "")
+    with pytest.raises(xlp.LineParseError):
+        assert xlp.Schema.from_type(
+            delimiter=",",
+            quote_str='"',
+            trailing_delimiter=False,
+            t=tuple[Literal["a"], str],
+        ).parse_line('"a",') == ("a", None)
+
+
+def _simple_schema(t: Any) -> xlp.Schema:
+    return xlp.Schema.from_type(
+        delimiter="|",
+        quote_str=None,
+        trailing_delimiter=False,
+        t=tuple[Literal["a"], t],
+    )
+
+
+def test_str_constraints() -> None:
+    _simple_schema(Annotated[str, xlp.StrField(min_length=2)]).parse_line("a|hi")
+    with pytest.raises(xlp.LineParseError):
+        _simple_schema(Annotated[str, xlp.StrField(min_length=2)]).parse_line("a|i")
+
+    _simple_schema(Annotated[str, xlp.StrField(max_length=2)]).parse_line("a|hi")
+    with pytest.raises(xlp.LineParseError):
+        _simple_schema(Annotated[str, xlp.StrField(max_length=2)]).parse_line("a|hii")
+
+    _simple_schema(Annotated[str, xlp.StrField(invalid_characters="abc")]).parse_line(
+        "a|def"
+    )
+    with pytest.raises(xlp.LineParseError):
+        _simple_schema(
+            Annotated[str, xlp.StrField(invalid_characters="abc")]
+        ).parse_line("a|decf")
+
+
+def test_int_constraints() -> None:
+    _simple_schema(Annotated[int, xlp.IntField(min_value=2)]).parse_line("a|2")
+    with pytest.raises(xlp.LineParseError):
+        _simple_schema(Annotated[int, xlp.IntField(min_value=2)]).parse_line("a|1")
+
+    _simple_schema(Annotated[int, xlp.IntField(max_value=2)]).parse_line("a|2")
+    with pytest.raises(xlp.LineParseError):
+        _simple_schema(Annotated[int, xlp.IntField(max_value=2)]).parse_line("a|3")
+
+
+def test_float_constrafloats() -> None:
+    _simple_schema(Annotated[float, xlp.FloatField(min_value=2.0)]).parse_line("a|2.0")
+    with pytest.raises(xlp.LineParseError):
+        _simple_schema(Annotated[float, xlp.FloatField(min_value=2.0)]).parse_line(
+            "a|1.0"
+        )
+
+    _simple_schema(Annotated[float, xlp.FloatField(max_value=2.0)]).parse_line("a|2.0")
+    with pytest.raises(xlp.LineParseError):
+        _simple_schema(Annotated[float, xlp.FloatField(max_value=2.0)]).parse_line(
+            "a|3.0"
+        )
+
+
+def test_decimal_constraints() -> None:
+    _simple_schema(
+        Annotated[Decimal, xlp.DecimalField(min_value=Decimal("2.0"))]
+    ).parse_line("a|2.0")
+    with pytest.raises(xlp.LineParseError):
+        _simple_schema(
+            Annotated[Decimal, xlp.DecimalField(min_value=Decimal("2.0"))]
+        ).parse_line("a|1.0")
+
+    _simple_schema(
+        Annotated[Decimal, xlp.DecimalField(max_value=Decimal("2.0"))]
+    ).parse_line("a|2.0")
+    with pytest.raises(xlp.LineParseError):
+        _simple_schema(
+            Annotated[Decimal, xlp.DecimalField(max_value=Decimal("2.0"))]
+        ).parse_line("a|3.0")
+
+    _simple_schema(
+        Annotated[Decimal, xlp.DecimalField(max_decimal_places=3)]
+    ).parse_line("a|2.000")
+    with pytest.raises(xlp.LineParseError):
+        _simple_schema(
+            Annotated[Decimal, xlp.DecimalField(max_decimal_places=3)]
+        ).parse_line("a|2.0000")

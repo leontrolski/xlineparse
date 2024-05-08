@@ -88,8 +88,8 @@ class DecimalField:
             kind="DECIMAL",
             required=self.required,
             max_decimal_places=self.max_decimal_places,
-            min_value=self.min_value,
-            max_value=self.max_value,
+            min_value=None if self.min_value is None else str(self.min_value),
+            max_value=None if self.max_value is None else str(self.max_value),
         )
 
 
@@ -259,9 +259,9 @@ class Schema:
 
     def parse_line(self, line: str) -> tuple[Any, ...]:
         try:
-            parsed = self._parser.parse_line(line)  # type: ignore
+            parsed = self._parser.parse_line(line)
         except ValueError as e:
-            raise LineParseError(f"Failed to parse line: {line}") from e
+            raise LineParseError(f"Failed to parse line: '{line}'\n {e.args[0]}")
         if self._enum_conversions:
             first, *_ = parsed
             enum_conversion: dict[int, StrEnumField] = self._enum_conversions[first]
@@ -269,4 +269,4 @@ class Schema:
                 enum_conversion[i].cls(v) if i in enum_conversion else v
                 for i, v in enumerate(parsed)
             )
-        return parsed
+        return parsed  # type: ignore
