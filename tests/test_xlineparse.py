@@ -227,3 +227,44 @@ def test_decimal_constraints() -> None:
         _simple_schema(
             Annotated[Decimal, xlp.DecimalField(max_decimal_places=3)]
         ).parse_line("a|2.0000")
+
+
+def test_errors() -> None:
+    xlp.Schema.from_type(
+        delimiter="|",
+        quote_str=None,
+        trailing_delimiter=False,
+        t=tuple[Literal["a"], int],
+    ).parse_line("a|1")
+
+    with pytest.raises(xlp.LineParseError):
+        xlp.Schema.from_type(
+            delimiter="||",  # too long
+            quote_str=None,
+            trailing_delimiter=False,
+            t=tuple[Literal["a"], int],
+        ).parse_line("a|1")
+
+    with pytest.raises(xlp.LineParseError):
+        xlp.Schema.from_type(
+            delimiter="|",
+            quote_str='""',  # too long
+            trailing_delimiter=False,
+            t=tuple[Literal["a"], int],
+        ).parse_line("a|1")
+
+    with pytest.raises(xlp.LineParseError):
+        xlp.Schema.from_type(
+            delimiter="|",
+            quote_str=None,
+            trailing_delimiter=True,  # no trailing
+            t=tuple[Literal["a"], int],
+        ).parse_line("a|1")
+
+    with pytest.raises(xlp.LineParseError):
+        xlp.Schema.from_type(
+            delimiter="|",
+            quote_str=None,
+            trailing_delimiter=False,
+            t=tuple[Literal["a"], int],
+        ).parse_line("a|1|2")  # too many parts

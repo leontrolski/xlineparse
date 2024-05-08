@@ -53,11 +53,9 @@ schema.parse_line("asd|1|3.14||Y|2012-01-02|123200")
 
 # TODO:
 
-- Refactor some of the `is_none()`s with a bit o' ChatGPT.
 - Allow delimiters to be escaped.
-- Test errors.
 - `IntEnum`
-- Can we make enums quicker?
+- Can we make enums quicker by moving to Rust?
 
 # Install/Develop
 

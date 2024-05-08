@@ -151,7 +151,7 @@ impl Parser {
             if quote_str.len() == 1 {
                 Ok(Some(quote_str.chars().next().unwrap()))
             } else {
-                Err(PyValueError::new_err("Delimiter needs to be of length 1"))
+                Err(PyValueError::new_err("Quote needs to be of length 1"))
             }?
         } else {
             None
