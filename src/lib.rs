@@ -36,8 +36,6 @@ enum Field {
     Decimal(DecimalField),
     #[serde(rename = "BOOL")]
     Bool(BoolField),
-    #[serde(rename = "ENUM")]
-    Enum(EnumField),
     #[serde(rename = "DATETIME")]
     Datetime(DatetimeField),
     #[serde(rename = "DATE")]
@@ -78,21 +76,15 @@ struct FloatField {
 struct DecimalField {
     required: bool,
     max_decimal_places: Option<usize>,
-    min_value: Option<Decimal>, // Note this is String
-    max_value: Option<Decimal>, // Note this is String
+    min_value: Option<Decimal>,
+    max_value: Option<Decimal>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 struct BoolField {
     required: bool,
-    true_value: String,  // Renamed true to true_value as true is a keyword
-    false_value: String, // Renamed false to false_value as false is a keyword
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct EnumField {
-    required: bool,
-    values: Vec<String>,
+    true_value: String,
+    false_value: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -140,7 +132,7 @@ impl Parser {
         let parsed_data: serde_json::Result<Schema> = serde_json::from_str(schema_json_str);
         match parsed_data {
             Ok(schemas) => {
-                // Schemas live for the duration of the program
+                // Schema lives for the duration of the program
                 let boxed = Box::new(schemas);
                 let leaked = Box::leak(boxed);
                 Ok(Parser { schema: leaked })
@@ -149,57 +141,49 @@ impl Parser {
         }
     }
     fn parse_line<'a>(&self, _py: Python<'a>, line: &str) -> PyResult<PyObject> {
-        if self.schema.delimiter.len() != 1 {
-            return Err(PyValueError::new_err("Delimiter needs to be of length 1"));
-        }
-        let delimiter = self.schema.delimiter.chars().next().unwrap();
-        let mut quote_str: Option<char> = None;
-        if self.schema.quote_str.is_some() {
-            if self.schema.quote_str.as_ref().unwrap().len() != 1 {
-                return Err(PyValueError::new_err("Delimiter needs to be of length 1"));
-            }
-            quote_str = Some(
-                self.schema
-                    .quote_str
-                    .as_ref()
-                    .unwrap()
-                    .chars()
-                    .next()
-                    .unwrap(),
-            );
-        }
+        let delimiter = if self.schema.delimiter.len() == 1 {
+            Ok(self.schema.delimiter.chars().next().unwrap())
+        } else {
+            Err(PyValueError::new_err("Delimiter needs to be of length 1"))
+        }?;
+
+        let quote_char = if let Some(quote_str) = &self.schema.quote_str {
+            if quote_str.len() == 1 {
+                Ok(Some(quote_str.chars().next().unwrap()))
+            } else {
+                Err(PyValueError::new_err("Delimiter needs to be of length 1"))
+            }?
+        } else {
+            None
+        };
 
         let mut line_stripped = line.trim_end_matches('\n');
         if self.schema.trailing_delimiter {
-            if !line_stripped.ends_with(delimiter) {
-                return Err(PyValueError::new_err(
+            line_stripped = if line_stripped.ends_with(delimiter) {
+                Ok(line.trim_end_matches(delimiter))
+            } else {
+                Err(PyValueError::new_err(
                     "Line doesn't have trailing delimiter",
-                ));
-            }
-            line_stripped = line.trim_end_matches(delimiter);
-        }
+                ))
+            }?;
+        };
 
         let mut parts = line_stripped.split(delimiter);
-        let or_first = parts.next();
-        if or_first.is_none() {
-            return Err(PyValueError::new_err("Split line has length < 1"));
-        }
-        let first = strip_part(quote_str, or_first.unwrap())?;
+        let first = strip_part(
+            quote_char,
+            parts
+                .next()
+                .ok_or(PyValueError::new_err("Split line has length < 1"))?,
+        )?;
         let rest: Vec<&str> = parts.collect();
 
-        let or_schema_line = self
+        let schema_line = self
             .schema
             .lines
             .iter()
-            .filter(|schema_line| schema_line.name == first)
-            .next();
-        if or_schema_line.is_none() {
-            return Err(PyValueError::new_err(format!(
-                "No schema line matching '{}'",
-                first
-            )));
-        }
-        let schema_line = or_schema_line.unwrap();
+            .find(|schema_line| schema_line.name == first)
+            .ok_or_else(|| PyValueError::new_err(format!("No schema line matching '{}'", first)))?;
+
         if schema_line.fields.len() != rest.len() {
             return Err(PyValueError::new_err(format!(
                 "Mismatched line length, schema length: {}, actual length: (header=1) + {}",
@@ -210,31 +194,40 @@ impl Parser {
 
         let mut py_items: Vec<PyObject> = vec![first.into_py(_py)];
         for (schema_field, &part) in schema_line.fields.iter().zip(rest.iter()) {
-            py_items.push(part_to_py(_py, quote_str, schema_field, part)?)
+            py_items.push(part_to_py(_py, quote_char, schema_field, part)?)
         }
         Ok(PyTuple::new(_py, &py_items).into_py(_py))
     }
 }
 
 fn strip_part(quote_str: Option<char>, part: &str) -> PyResult<&str> {
-    quote_str.map_or(Ok(part), |q| {
-        if part.len() < 2 {
-            return Err(PyValueError::new_err(format!("Part '{}' too short", part)));
+    if let Some(q) = quote_str {
+        if part.len() >= 2 && part.starts_with(q) && part.ends_with(q) {
+            Ok(&part[1..part.len() - 1])
+        } else {
+            Err(PyValueError::new_err(if part.len() < 2 {
+                format!("Part '{}' too short", part)
+            } else {
+                format!("Part '{}' does not start and end with '{}'", part, q)
+            }))
         }
-        if !part.starts_with(q) {
-            return Err(PyValueError::new_err(format!(
-                "Part '{}' does not start with '{}'",
-                part, q
-            )));
-        }
-        if !part.ends_with(q) {
-            return Err(PyValueError::new_err(format!(
-                "Part '{}' does not end with '{}'",
-                part, q
-            )));
-        }
-        Ok(part.get(1..part.len() - 1).unwrap())
-    })
+    } else {
+        Ok(part)
+    }
+}
+
+fn required(field: &Field) -> bool {
+    match field {
+        Field::Str(StrField { required, .. })
+        | Field::StrEnum(StrEnumField { required, .. })
+        | Field::Int(IntField { required, .. })
+        | Field::Float(FloatField { required, .. })
+        | Field::Decimal(DecimalField { required, .. })
+        | Field::Bool(BoolField { required, .. })
+        | Field::Datetime(DatetimeField { required, .. })
+        | Field::Date(DateField { required, .. })
+        | Field::Time(TimeField { required, .. }) => *required,
+    }
 }
 
 fn part_to_py<'a>(
@@ -243,180 +236,127 @@ fn part_to_py<'a>(
     schema_field: &Field,
     part: &str,
 ) -> PyResult<PyObject> {
-    let none: Option<&str> = None;
-    let err = |extra: Option<&str>| {
+    let err = |extra: &str| {
         Err(PyValueError::new_err(format!(
             "{} - '{}' given schema: {:?}",
-            extra.unwrap_or("Unable to parse"),
-            part,
-            schema_field,
+            extra, part, schema_field,
         )))
     };
-    match (part, schema_field) {
-        (
-            "",
-            Field::Str(StrField {
-                required: false, ..
-            })
-            | Field::StrEnum(StrEnumField {
-                required: false, ..
-            })
-            | Field::Int(IntField {
-                required: false, ..
-            })
-            | Field::Float(FloatField {
-                required: false, ..
-            })
-            | Field::Decimal(DecimalField {
-                required: false, ..
-            })
-            | Field::Bool(BoolField {
-                required: false, ..
-            })
-            | Field::Enum(EnumField {
-                required: false, ..
-            })
-            | Field::Datetime(DatetimeField {
-                required: false, ..
-            })
-            | Field::Date(DateField {
-                required: false, ..
-            })
-            | Field::Time(TimeField {
-                required: false, ..
-            }),
-        ) => Ok(none.into_py(_py)),
-        (
-            _,
-            Field::Str(StrField {
-                min_length,
-                max_length,
-                invalid_characters,
-                ..
-            }),
-        ) => {
+
+    let none: Option<&str> = None;
+    if part == "" && !required(schema_field) {
+        return Ok(none.into_py(_py));
+    }
+    match schema_field {
+        Field::Str(StrField {
+            min_length,
+            max_length,
+            invalid_characters,
+            ..
+        }) => {
             let part_stripped = strip_part(quote_str, part)?;
             if min_length.is_some() && part_stripped.len() < min_length.unwrap() {
-                return err(Some("String is too short"));
+                return err("String is too short");
             }
             if max_length.is_some() && part_stripped.len() > max_length.unwrap() {
-                return err(Some("String is too long"));
+                return err("String is too long");
             }
-            if invalid_characters.is_some() {
-                let invalid_characters = invalid_characters.as_ref().unwrap();
+            if let Some(invalid_characters_) = invalid_characters {
                 if part_stripped
                     .chars()
-                    .any(|c| invalid_characters.contains(c))
+                    .any(|c| invalid_characters_.contains(c))
                 {
-                    return err(Some("String contains invalid characters"));
+                    return err("String contains invalid characters");
                 }
             }
             Ok(String::from(part_stripped).into_py(_py))
         }
-        (_, Field::StrEnum(StrEnumField { values, .. })) => {
+        Field::StrEnum(StrEnumField { values, .. }) => {
             let part_stripped = strip_part(quote_str, part)?;
             if values.contains(&String::from(part_stripped)) {
                 Ok(String::from(part_stripped).into_py(_py))
             } else {
-                err(None)
+                err("Value not in enum")
             }
         }
-        (
-            _,
-            Field::Int(IntField {
-                min_value,
-                max_value,
-                ..
-            }),
-        ) => part.parse::<i64>().map_or_else(
-            |_| err(None),
+        Field::Int(IntField {
+            min_value,
+            max_value,
+            ..
+        }) => part.parse::<i64>().map_or_else(
+            |_| err("Does not parse as int"),
             |i| {
                 if min_value.is_some() && i < min_value.unwrap() {
-                    return err(Some("Int is too small"));
+                    return err("Int is too small");
                 }
                 if max_value.is_some() && i > max_value.unwrap() {
-                    return err(Some("Int is too large"));
+                    return err("Int is too large");
                 }
                 Ok(i.into_py(_py))
             },
         ),
-        (
-            _,
-            Field::Float(FloatField {
-                min_value,
-                max_value,
-                ..
-            }),
-        ) => part.parse::<f64>().map_or_else(
-            |_| err(None),
+        Field::Float(FloatField {
+            min_value,
+            max_value,
+            ..
+        }) => part.parse::<f64>().map_or_else(
+            |_| err("Does not parse as float"),
             |i| {
                 if min_value.is_some() && i < min_value.unwrap() {
-                    return err(Some("Float is too small"));
+                    return err("Float is too small");
                 }
                 if max_value.is_some() && i > max_value.unwrap() {
-                    return err(Some("Float is too large"));
+                    return err("Float is too large");
                 }
                 Ok(i.into_py(_py))
             },
         ),
-        (
-            _,
-            Field::Decimal(DecimalField {
-                max_decimal_places,
-                min_value,
-                max_value,
-                ..
-            }),
-        ) => Decimal::from_str_exact(part).map_or_else(
-            |_| err(None),
+        Field::Decimal(DecimalField {
+            max_decimal_places,
+            min_value,
+            max_value,
+            ..
+        }) => Decimal::from_str_exact(part).map_or_else(
+            |_| err("Does not parse as decimal"),
             |i| {
                 if min_value.is_some() && i < min_value.unwrap() {
-                    return err(Some("Decimal is too small"));
+                    return err("Decimal is too small");
                 }
                 if max_value.is_some() && i > max_value.unwrap() {
-                    return err(Some("Decimal is too large"));
+                    return err("Decimal is too large");
                 }
                 if max_decimal_places.is_some() {
                     let mut parts = part.split('.');
                     parts.next();
                     if parts.next().unwrap_or("").len() > max_decimal_places.unwrap() {
-                        return err(Some("Decimal has too many decimal places"));
+                        return err("Decimal has too many decimal places");
                     }
                 }
                 Ok(i.into_py(_py))
             },
         ),
-        (
-            _,
-            Field::Bool(BoolField {
-                true_value,
-                false_value,
-                ..
-            }),
-        ) => {
+        Field::Bool(BoolField {
+            true_value,
+            false_value,
+            ..
+        }) => {
             if part == true_value {
                 Ok(true.into_py(_py))
             } else if part == false_value {
                 Ok(false.into_py(_py))
             } else {
-                err(None)
+                err("Value is neither true or false value")
             }
         }
-        (
-            _,
-            Field::Datetime(DatetimeField {
-                format, time_zone, ..
-            }),
-        ) => {
+        Field::Datetime(DatetimeField {
+            format, time_zone, ..
+        }) => {
             let tz: Result<Tz, _> = time_zone.parse();
             if tz.is_err() {
-                return Err(PyValueError::new_err(format!(
-                    "Invalid time zone: {}",
-                    time_zone
-                )));
+                return err("Invalid timezone");
             }
             NaiveDateTime::parse_from_str(part, format).map_or_else(
-                |_| err(None),
+                |_| err("Does not parse as datetime"),
                 |i| {
                     let dt = tz.unwrap().with_ymd_and_hms(
                         i.year(),
@@ -428,19 +368,15 @@ fn part_to_py<'a>(
                     );
                     match dt {
                         LocalResult::Single(dt) => Ok(dt.into_py(_py)),
-                        _ => Err(PyValueError::new_err(format!(
-                            "Invalid datetime: '{}'",
-                            part
-                        ))),
+                        _ => err("Does not parse as datetime"),
                     }
                 },
             )
         }
-        (_, Field::Date(DateField { format, .. })) => NaiveDate::parse_from_str(part, format)
-            .map_or_else(|_| err(None), |i| Ok(i.into_py(_py))),
-        (_, Field::Time(TimeField { format, .. })) => NaiveTime::parse_from_str(part, format)
-            .map_or_else(|_| err(None), |i| Ok(i.into_py(_py))),
-        _ => err(None),
+        Field::Date(DateField { format, .. }) => NaiveDate::parse_from_str(part, format)
+            .map_or_else(|_| err("Does not parse as date"), |i| Ok(i.into_py(_py))),
+        Field::Time(TimeField { format, .. }) => NaiveTime::parse_from_str(part, format)
+            .map_or_else(|_| err("Does not parse as time"), |i| Ok(i.into_py(_py))),
     }
 }
 
