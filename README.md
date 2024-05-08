@@ -31,7 +31,7 @@ QweLine = tuple[
 
 schema = xlp.Schema.from_type(
     delimiter="|",
-    quote=None,
+    quote_str=None,
     trailing_delimiter=False,
     lines=AsdLine | QweLine,
 )
@@ -53,8 +53,6 @@ schema.parse_line("asd|1|3.14||Y|2012-01-02|123200")
 
 # TODO:
 
-- `IntEnum`
-- Can we make enums quicker?
 - Implement constraints:
     - StrField.min_length
     - StrField.max_length
@@ -66,9 +64,11 @@ schema.parse_line("asd|1|3.14||Y|2012-01-02|123200")
     - DecimalField.max_decimal_places: int | None = None
     - DecimalField.min_value: decimal.Decimal | None = None
     - DecimalField.max_value: decimal.Decimal | None = None
-- Implement different quote characters.
-- Allow delimiters to be escaped.
 - Refactor some of the `is_none()`s with a bit o' ChatGPT.
+- Allow delimiters to be escaped.
+- Test errors.
+- `IntEnum`
+- Can we make enums quicker?
 
 # Install/Develop
 

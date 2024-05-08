@@ -219,7 +219,7 @@ class LineParseError(ValueError): ...
 @dataclass
 class Schema:
     delimiter: str
-    quote: str | None
+    quote_str: str | None
     trailing_delimiter: bool
     lines: list[Line]
 
@@ -227,7 +227,7 @@ class Schema:
         # Add a ._parser
         jsonable = dict(
             delimiter=self.delimiter,
-            quote=self.quote,
+            quote_str=self.quote_str,
             trailing_delimiter=self.trailing_delimiter,
             lines=[line.as_dict() for line in self.lines],
         )
@@ -242,7 +242,7 @@ class Schema:
     @staticmethod
     def from_type(
         delimiter: str,
-        quote: str | None,
+        quote_str: str | None,  # do we quote strings like "foo"
         trailing_delimiter: bool,
         t: Any,  # some day, we can use TypeForm here...
     ) -> Schema:
@@ -252,7 +252,7 @@ class Schema:
             lines = [convert_line_type(t)]
         return Schema(
             delimiter=delimiter,
-            quote=quote,
+            quote_str=quote_str,
             trailing_delimiter=trailing_delimiter,
             lines=lines,
         )

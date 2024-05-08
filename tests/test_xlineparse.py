@@ -24,7 +24,7 @@ AsdLine = tuple[
 ]
 file_1_schema = xlp.Schema.from_type(
     delimiter="|",
-    quote=None,
+    quote_str=None,
     trailing_delimiter=False,
     t=AsdLine,
 )
@@ -35,13 +35,13 @@ QweLine = tuple[
 ]
 file_2_schema = xlp.Schema.from_type(
     delimiter="|",
-    quote=None,
+    quote_str=None,
     trailing_delimiter=False,
     t=AsdLine | QweLine,
 )
 file_3_schema = xlp.Schema.from_type(
     delimiter="|",
-    quote=None,
+    quote_str=None,
     trailing_delimiter=True,
     t=QweLine,
 )
@@ -54,9 +54,20 @@ class FooEnum(enum.Enum):
 
 file_4_schema = xlp.Schema.from_type(
     delimiter="|",
-    quote=None,
+    quote_str=None,
     trailing_delimiter=False,
     t=tuple[Literal["foo"], FooEnum, FooEnum],
+)
+ZxcLine = tuple[
+    Literal["zxc"],
+    str,
+    int,
+]
+file_5_schema = xlp.Schema.from_type(
+    delimiter=",",
+    quote_str='"',
+    trailing_delimiter=False,
+    t=ZxcLine,
 )
 
 
@@ -95,4 +106,12 @@ def test_parse_line_4() -> None:
         "foo",
         FooEnum.A,
         FooEnum.B,
+    )
+
+
+def test_parse_line_5() -> None:
+    assert file_5_schema.parse_line('"zxc","oi oi",4') == (
+        "zxc",
+        "oi oi",
+        4,
     )

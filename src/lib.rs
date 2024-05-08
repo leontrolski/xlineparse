@@ -123,7 +123,7 @@ struct Line {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Schema {
     delimiter: String,
-    quote: Option<String>,
+    quote_str: Option<String>,
     trailing_delimiter: bool,
     lines: Vec<Line>,
 }
@@ -153,6 +153,21 @@ impl Parser {
             return Err(PyValueError::new_err("Delimiter needs to be of length 1"));
         }
         let delimiter = self.schema.delimiter.chars().next().unwrap();
+        let mut quote_str: Option<char> = None;
+        if self.schema.quote_str.is_some() {
+            if self.schema.quote_str.as_ref().unwrap().len() != 1 {
+                return Err(PyValueError::new_err("Delimiter needs to be of length 1"));
+            }
+            quote_str = Some(
+                self.schema
+                    .quote_str
+                    .as_ref()
+                    .unwrap()
+                    .chars()
+                    .next()
+                    .unwrap(),
+            );
+        }
 
         let mut line_stripped = line.trim_end_matches('\n');
         if self.schema.trailing_delimiter {
@@ -169,7 +184,7 @@ impl Parser {
         if or_first.is_none() {
             return Err(PyValueError::new_err("Split line has length < 1"));
         }
-        let first = or_first.unwrap();
+        let first = strip_part(quote_str, or_first.unwrap())?;
         let rest: Vec<&str> = parts.collect();
 
         let or_schema_line = self
@@ -195,13 +210,39 @@ impl Parser {
 
         let mut py_items: Vec<PyObject> = vec![first.into_py(_py)];
         for (schema_field, &part) in schema_line.fields.iter().zip(rest.iter()) {
-            py_items.push(part_to_py(_py, schema_field, part)?)
+            py_items.push(part_to_py(_py, quote_str, schema_field, part)?)
         }
         Ok(PyTuple::new(_py, &py_items).into_py(_py))
     }
 }
 
-fn part_to_py<'a>(_py: Python<'a>, schema_field: &Field, part: &str) -> PyResult<PyObject> {
+fn strip_part(quote_str: Option<char>, part: &str) -> PyResult<&str> {
+    quote_str.map_or(Ok(part), |q| {
+        if part.len() < 2 {
+            return Err(PyValueError::new_err(format!("Part {} too short", part)));
+        }
+        if !part.starts_with(q) {
+            return Err(PyValueError::new_err(format!(
+                "Part {} does not start with {}",
+                part, q
+            )));
+        }
+        if !part.ends_with(q) {
+            return Err(PyValueError::new_err(format!(
+                "Part {} does not end with {}",
+                part, q
+            )));
+        }
+        Ok(part.get(1..part.len() - 1).unwrap())
+    })
+}
+
+fn part_to_py<'a>(
+    _py: Python<'a>,
+    quote_str: Option<char>,
+    schema_field: &Field,
+    part: &str,
+) -> PyResult<PyObject> {
     let none: Option<&str> = None;
     let err: PyResult<PyObject> = Err(PyValueError::new_err(format!(
         "Unable to parse {} as {:?}",
@@ -241,10 +282,14 @@ fn part_to_py<'a>(_py: Python<'a>, schema_field: &Field, part: &str) -> PyResult
                 required: false, ..
             }),
         ) => Ok(none.into_py(_py)),
-        (_, Field::Str(_)) => Ok(String::from(part).into_py(_py)),
+        (_, Field::Str(_)) => {
+            let part_stripped = strip_part(quote_str, part)?;
+            Ok(String::from(part_stripped).into_py(_py))
+        }
         (_, Field::StrEnum(StrEnumField { values, .. })) => {
-            if values.contains(&String::from(part)) {
-                Ok(String::from(part).into_py(_py))
+            let part_stripped = strip_part(quote_str, part)?;
+            if values.contains(&String::from(part_stripped)) {
+                Ok(String::from(part_stripped).into_py(_py))
             } else {
                 err
             }
