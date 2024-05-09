@@ -63,7 +63,7 @@ schema = xlp.Schema(
             fields=[
                 xlp.DecimalField(
                     required=True,
-                    max_decimal_places=None,
+                    round_decimal_places=None,
                     min_value=Decimal("2.0"),
                     max_value=None,
                 )
@@ -80,8 +80,8 @@ assert schema.parse_line("a|2.0")
 
 # TODO:
 
+- Maybe the big decimals are just floats?
 - Allow delimiters to be escaped.
-- `IntEnum`
 - Can we make enums quicker by moving to Rust?
 
 # Install/Develop

@@ -35,10 +35,6 @@ class StrEnumField:
 
     def as_dict(self) -> dict[str, Any]:
         values = {field.value for field in self.cls}
-        if not all(isinstance(v, str) for v in values):
-            raise NotImplementedError(
-                f"Can't convert {self.cls} as all the values are not strings"
-            )
         return dict(
             kind="STR_ENUM",
             required=self.required,
@@ -62,6 +58,20 @@ class IntField:
 
 
 @dataclass(frozen=True, kw_only=True)
+class IntEnumField:
+    required: bool = True
+    cls: type[enum.Enum]
+
+    def as_dict(self) -> dict[str, Any]:
+        values = {field.value for field in self.cls}
+        return dict(
+            kind="INT_ENUM",
+            required=self.required,
+            values=sorted(values),
+        )
+
+
+@dataclass(frozen=True, kw_only=True)
 class FloatField:
     required: bool = True
     min_value: float | None = None
@@ -76,10 +86,16 @@ class FloatField:
         )
 
 
+def decimal_to_str(d: decimal.Decimal | None) -> str | None:
+    if d is None:
+        return None
+    return f"{d:f}"
+
+
 @dataclass(frozen=True, kw_only=True)
 class DecimalField:
     required: bool = True
-    max_decimal_places: int | None = None
+    round_decimal_places: int | None = None
     min_value: decimal.Decimal | None = None
     max_value: decimal.Decimal | None = None
 
@@ -87,9 +103,9 @@ class DecimalField:
         return dict(
             kind="DECIMAL",
             required=self.required,
-            max_decimal_places=self.max_decimal_places,
-            min_value=None if self.min_value is None else str(self.min_value),
-            max_value=None if self.max_value is None else str(self.max_value),
+            round_decimal_places=self.round_decimal_places,
+            min_value=decimal_to_str(self.min_value),
+            max_value=decimal_to_str(self.max_value),
         )
 
 
@@ -97,7 +113,7 @@ class DecimalField:
 class BoolField:
     required: bool = True
     true_value: str
-    false_value: str  # can only be "" if .required
+    false_value: str | None  # can only be "" if .required
 
     def as_dict(self) -> dict[str, Any]:
         return dict(
@@ -153,6 +169,7 @@ Field = (
     StrField
     | StrEnumField
     | IntField
+    | IntEnumField
     | FloatField
     | DecimalField
     | BoolField
@@ -173,6 +190,9 @@ def field_type_to_field(t: type) -> Field:
         args -= {None, NoneType}
         (t,) = args
         required = False
+    # Once more in case the Union was nested
+    if get_origin(t) is Annotated:
+        t, field = get_args(t)
 
     if t is str and field is None:
         field = StrField()
@@ -183,7 +203,14 @@ def field_type_to_field(t: type) -> Field:
     elif t is decimal.Decimal and field is None:
         field = DecimalField()
     elif issubclass(t, enum.Enum) and field is None:
-        field = StrEnumField(cls=t)
+        if all(isinstance(v.value, str) for v in t):
+            field = StrEnumField(cls=t)
+        elif all(isinstance(v.value, int) for v in t):
+            field = IntEnumField(cls=t)
+        else:
+            raise NotImplementedError(
+                f"Can't convert {t} as all the values are not strings|ints"
+            )
 
     if field is None:
         raise RuntimeError(f"Type {t} needs Annotated[x, XField(...)]")
@@ -233,10 +260,12 @@ class Schema:
         )
         self._parser = _xlineparse.Parser(json.dumps(jsonable))
         # Set up enum conversion map, maybe there's a more efficient way of doing this..
-        self._enum_conversions: dict[str, dict[int, StrEnumField]] = defaultdict(dict)
+        self._enum_conversions: dict[str, dict[int, StrEnumField | IntEnumField]] = (
+            defaultdict(dict)
+        )
         for line in self.lines:
             for i, field in enumerate(line.fields, start=1):
-                if isinstance(field, StrEnumField):
+                if isinstance(field, (StrEnumField, IntEnumField)):
                     self._enum_conversions[line.name][i] = field
 
     @staticmethod
@@ -261,10 +290,13 @@ class Schema:
         try:
             parsed = self._parser.parse_line(line)
         except ValueError as e:
+            line = line.rstrip("\n")
             raise LineParseError(f"Failed to parse line: '{line}'\n {e.args[0]}")
         if self._enum_conversions:
             first, *_ = parsed
-            enum_conversion: dict[int, StrEnumField] = self._enum_conversions[first]
+            enum_conversion: dict[int, StrEnumField | IntEnumField] = (
+                self._enum_conversions[first]
+            )
             parsed = tuple(
                 (
                     enum_conversion[i].cls(v)
