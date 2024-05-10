@@ -25,8 +25,6 @@ AsdLine = tuple[
 ]
 schema_many_types = xlp.Schema.from_type(
     delimiter="|",
-    quote_str=None,
-    trailing_delimiter=False,
     t=AsdLine,
 )
 
@@ -70,8 +68,6 @@ def test_parse_types() -> None:
 def test_parse_either_line() -> None:
     assert xlp.Schema.from_type(
         delimiter="|",
-        quote_str=None,
-        trailing_delimiter=False,
         t=AsdLine | QweLine,
     ).parse_line("qwe|1") == (
         "qwe",
@@ -82,7 +78,6 @@ def test_parse_either_line() -> None:
 def test_parse_trailing() -> None:
     assert xlp.Schema.from_type(
         delimiter="|",
-        quote_str=None,
         trailing_delimiter=True,
         t=QweLine,
     ).parse_line("qwe|1|\n") == (
@@ -94,7 +89,6 @@ def test_parse_trailing() -> None:
 def test_parse_trailing_many() -> None:
     assert xlp.Schema.from_type(
         delimiter="|",
-        quote_str=None,
         trailing_delimiter=True,
         t=tuple[Literal["a"], int | None, int | None],
     ).parse_line("a|||") == (
@@ -107,8 +101,6 @@ def test_parse_trailing_many() -> None:
 def test_parse_str_enum() -> None:
     schema = xlp.Schema.from_type(
         delimiter="|",
-        quote_str=None,
-        trailing_delimiter=False,
         t=tuple[Literal["foo"], FooEnum, FooEnum | None],
     )
     assert schema.parse_line("foo|A|B") == (
@@ -127,7 +119,6 @@ def test_parse_str_enum_weird_quoted() -> None:
     schema = xlp.Schema.from_type(
         delimiter="|",
         quote_str='"',
-        trailing_delimiter=False,
         t=tuple[Literal["foo"], WeirdQuotedEnum],
     )
     assert schema.parse_line("foo|A") == (
@@ -139,8 +130,6 @@ def test_parse_str_enum_weird_quoted() -> None:
 def test_parse_int_enum() -> None:
     assert xlp.Schema.from_type(
         delimiter="|",
-        quote_str=None,
-        trailing_delimiter=False,
         t=tuple[Literal["bar"], BarEnum],
     ).parse_line("bar|2") == (
         "bar",
@@ -152,7 +141,6 @@ def test_parse_quoted() -> None:
     assert xlp.Schema.from_type(
         delimiter=",",
         quote_str='"',
-        trailing_delimiter=False,
         t=tuple[Literal["zxc"], str, int],
     ).parse_line('"zxc","oi oi",4') == (
         "zxc",
@@ -165,7 +153,6 @@ def test_parse_quoted_weird_bool() -> None:
     assert xlp.Schema.from_type(
         delimiter=",",
         quote_str='"',
-        trailing_delimiter=False,
         t=tuple[
             Literal["zxc"],
             Annotated[bool, xlp.BoolField(true_value='"Y"', false_value="")],
@@ -180,7 +167,6 @@ def test_parse_quoted_missing() -> None:
     assert xlp.Schema.from_type(
         delimiter=",",
         quote_str='"',
-        trailing_delimiter=False,
         t=tuple[Literal["zxc"], str, int],
     ).parse_line('"zxc",oi oi,4') == (
         "zxc",
@@ -193,7 +179,6 @@ def test_parse_quoted_with_comma() -> None:
     assert xlp.Schema.from_type(
         delimiter=",",
         quote_str='"',
-        trailing_delimiter=False,
         t=tuple[Literal["zxc"], str, int],
     ).parse_line('"zxc","oi, oi",4') == (
         "zxc",
@@ -205,35 +190,40 @@ def test_parse_quoted_with_comma() -> None:
 def test_emptyness() -> None:
     assert xlp.Schema.from_type(
         delimiter="|",
-        quote_str=None,
-        trailing_delimiter=False,
         t=tuple[Literal["a"], str],
-    ).parse_line("a|") == ("a", "")
+    ).parse_line(
+        "a|"
+    ) == ("a", "")
     assert xlp.Schema.from_type(
         delimiter="|",
-        quote_str=None,
-        trailing_delimiter=False,
         t=tuple[Literal["a"], str | None],
     ).parse_line("a|") == ("a", None)
     assert xlp.Schema.from_type(
         delimiter=",",
         quote_str='"',
-        trailing_delimiter=False,
         t=tuple[Literal["a"], str | None],
     ).parse_line('"a",') == ("a", None)
     assert xlp.Schema.from_type(
         delimiter=",",
         quote_str='"',
-        trailing_delimiter=False,
         t=tuple[Literal["a"], str],
+    ).parse_line('"a",""') == ("a", "")
+    assert xlp.Schema.from_type(
+        delimiter=",",
+        quote_str='"',
+        t=tuple[Literal["a"], str | None],
+    ).parse_line('"a",""') == ("a", None)
+    assert xlp.Schema.from_type(
+        delimiter=",",
+        quote_str='"',
+        coerce_empty_quoted=True,
+        t=tuple[Literal["a"], str | None],
     ).parse_line('"a",""') == ("a", "")
 
 
 def _simple_schema(t: Any) -> xlp.Schema:
     return xlp.Schema.from_type(
         delimiter="|",
-        quote_str=None,
-        trailing_delimiter=False,
         t=tuple[Literal["a"], t],
     )
 
@@ -310,16 +300,12 @@ def test_decimal_rounding() -> None:
 def test_errors() -> None:
     xlp.Schema.from_type(
         delimiter="|",
-        quote_str=None,
-        trailing_delimiter=False,
         t=tuple[Literal["a"], int],
     ).parse_line("a|1")
 
     with pytest.raises(xlp.LineParseError):
         xlp.Schema.from_type(
             delimiter="||",  # too long
-            quote_str=None,
-            trailing_delimiter=False,
             t=tuple[Literal["a"], int],
         ).parse_line("a|1")
 
@@ -327,14 +313,12 @@ def test_errors() -> None:
         xlp.Schema.from_type(
             delimiter="|",
             quote_str='""',  # too long
-            trailing_delimiter=False,
             t=tuple[Literal["a"], int],
         ).parse_line("a|1")
 
     with pytest.raises(xlp.LineParseError):
         xlp.Schema.from_type(
             delimiter="|",
-            quote_str=None,
             trailing_delimiter=True,  # no trailing
             t=tuple[Literal["a"], int],
         ).parse_line("a|1")
@@ -342,8 +326,6 @@ def test_errors() -> None:
     with pytest.raises(xlp.LineParseError):
         xlp.Schema.from_type(
             delimiter="|",
-            quote_str=None,
-            trailing_delimiter=False,
             t=tuple[Literal["a"], int],
         ).parse_line(
             "a|1|2"
@@ -353,8 +335,6 @@ def test_errors() -> None:
 def test_low_level_usage() -> None:
     schema = xlp.Schema(
         delimiter="|",
-        quote_str=None,
-        trailing_delimiter=False,
         lines=[
             xlp.Line(
                 name="a",
@@ -375,8 +355,6 @@ def test_low_level_usage() -> None:
 def test_big_decimal() -> None:
     schema = xlp.Schema(
         delimiter="|",
-        quote_str=None,
-        trailing_delimiter=False,
         lines=[
             xlp.Line(
                 name="a",
@@ -397,8 +375,6 @@ def test_big_decimal() -> None:
 def test_weird_time() -> None:
     schema = xlp.Schema(
         delimiter="|",
-        quote_str=None,
-        trailing_delimiter=False,
         lines=[
             xlp.Line(
                 name="a",
@@ -407,3 +383,29 @@ def test_weird_time() -> None:
         ],
     )
     assert schema.parse_line("a|240000") == ("a", dt.time(0, 0, 0))
+
+
+def test_parse_first() -> None:
+    assert (
+        xlp.Schema.from_type(
+            delimiter="|",
+            t=tuple[Literal["a"], str | None],
+        ).parse_first("abc|bkaaadfsd|sdfsdf")
+        == "abc"
+    )
+    assert (
+        xlp.Schema.from_type(
+            delimiter=",",
+            quote_str='"',
+            t=tuple[Literal["a"], str | None],
+        ).parse_first('"abc"...bkaaadfsd')
+        == "abc"
+    )
+    assert (
+        xlp.Schema.from_type(
+            delimiter=",",
+            quote_str='"',
+            t=tuple[Literal["a"], str | None],
+        ).parse_first("abc,...bkaaadfsd")
+        == "abc"
+    )

@@ -1,6 +1,6 @@
 [project]
 name = "xlineparse"
-version = "0.0.5"
+version = "0.0.6"
 description = "Parse variable length delimited lines"
 readme = "README.md"
 requires-python = ">=3.10"
